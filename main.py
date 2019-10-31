@@ -254,13 +254,13 @@ def dump_packet(buffer, size):
     :param size: size of the buffer
     :return:
     """
-    byteCount = 0
 
     # line of ascii for the end is generated along with the main output, but
     # only appended at the end of the line
     lineAscii = ""
     output = ""
-    for byte in buffer:
+    for byteCount in range(0, size):
+        byte = buffer[byteCount]
         if byteCount % 16 == 0:
             output += "\t" + lineAscii
             output += "\n|{:04x}|\t".format(byteCount)
@@ -277,7 +277,6 @@ def dump_packet(buffer, size):
             lineAscii += "{:c}".format(byte)
         else:
             lineAscii += "."
-        byteCount += 1
 
     # Filling out the last line with empty space and appending the ascii
     if byteCount % 16 <= 8:
@@ -387,6 +386,7 @@ def main():
                     res = parseHeader(data)
                 except Exception as e:
                     print("ERROR    {}".format(e))
+                    break
 
 
                 print("With DNS records:")
