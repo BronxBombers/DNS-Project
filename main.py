@@ -2,6 +2,7 @@
 import socket
 import sys
 import struct
+import time
 
 DEFAULT_PORT = 53
 DEFAULT_ID = 100
@@ -84,8 +85,9 @@ def parseRecords(data, questionLength, headerInfo):
     NSCOUNT = headerInfo["NameServerCount"]
     ARCOUNT = headerInfo["AdditionalRecordsCount"]
 
-
-    recordCountThresholds = [ANCOUNT, ANCOUNT+NSCOUNT, ANCOUNT+NSCOUNT+ARCOUNT]
+    recordCountThresholds = [ANCOUNT,
+                             ANCOUNT + NSCOUNT,
+                             ANCOUNT + NSCOUNT + ARCOUNT]
     recordCount = 0
 
     cursor = questionLength
@@ -126,7 +128,7 @@ def parseRecords(data, questionLength, headerInfo):
 
             print("\tCNAME\t", name, "\t" + auth, sep="")
         elif type == NS_TYPECODE:
-            name = parseName(data, cursor - 2);
+            name = parseName(data, cursor - 2)
 
             print("\tNS\t", name, "\t" + auth, sep="")
         elif type == MX_TYPECODE:
@@ -141,7 +143,6 @@ def parseRecords(data, questionLength, headerInfo):
 
     if cursor < len(data):
         raise Exception("Not enough data for specified number of records")
-
 
 
 def parseLabel(data, startPos):
@@ -191,6 +192,7 @@ def parseName(data, startPos):
     endName = cursor + nameSize
     nameBytes = data[cursor:endName]
     strRep = ""
+    lenCheck = 0
 
     while cursor < endName:
         wordSize = data[cursor]
@@ -201,13 +203,22 @@ def parseName(data, startPos):
             offset = data[cursor] + data[cursor + 1] - 192
             cursor += 2
             word = parseLabel(data, offset)
+            lenCheck += 2
             strRep += word
 
-        else:
+        elif wordSize > 0:
             cursor += 1
             wordBytes = data[cursor:cursor + wordSize]
             strRep += wordBytes.decode("ascii") + "."
             cursor += len(wordBytes)
+            lenCheck += wordSize + 1
+        else:
+            cursor += 1
+            lenCheck += 1
+
+    if not lenCheck == nameSize:
+        raise Exception("Malformed Name")
+
     return strRep
 
 
@@ -328,8 +339,11 @@ def parseHeader(data):
 
     RCODE = int('00001111', 2) & flagsB2
     if RCODE > 0:
-        raise Exception("Error Response")
-
+        if RCODE == 3:
+            print("NOTFOUND")
+            return
+        else:
+            raise Exception("Error Response")
     try:
         QDCOUNT = struct.unpack("!H", data[4:6])[0]
         ANCOUNT = struct.unpack("!H", data[6:8])[0]
@@ -377,27 +391,58 @@ def main():
     dump_packet(requestPacket, len(requestPacket))
 
     sent = sock.sendto(requestPacket, server_address)
-
+    sock.settimeout(5)
+    startTime = time.time()
     while True:
         print("Waiting for DNS response...")
-        data, server = sock.recvfrom(4096)
-        if len(data) > 2:
+
+        if (time.time() - startTime) > 300:
+            print("NORESPONSE")
+            return
+
+        try:
+            data, server = sock.recvfrom(4096)
+        except Exception as e:
+            print("NORESPONSE")
+            return
+
+        if server == server_address and len(data) > 2:
             respID = struct.unpack("!H", data[0:2])[0]
             if respID == DEFAULT_ID:
                 print("Received packet of size: ", len(data), "\nContents:")
                 dump_packet(data, len(data))
                 try:
                     res = parseHeader(data)
+
+                    if res is None:
+                        return
                 except Exception as e:
                     print("ERROR    {}".format(e))
                     break
 
-
                 print("With DNS records:")
-                parseRecords(data, sent, res)
 
+                try:
+                    parseRecords(data, sent, res)
+                except IndexError as e:
+                    print("ERROR:   Incomplete Record in packet")
+                except Exception as e:
+                    print("ERROR    {}".format(e))
                 break
 
 
 if __name__ == "__main__":
     main()
+
+"""
+1) Parse args for mail server or name server request
+    1b) Update parsing functions
+DONE 2) Add 5 second timeout for response
+DONE 3) Verify incoming response is from same server IP
+4) Change Name
+5) Make sure output is in correct format   
+6) Make sure error handling is thorough
+7) Documentation
+8) Readme
+9) 
+"""
