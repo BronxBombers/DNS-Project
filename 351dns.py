@@ -470,6 +470,7 @@ def main():
 
                 try:
                     parseRecords(data, sent, res)
+                # Something went wrong with indexing; probably packet too short
                 except IndexError as e:
                     print("ERROR:   Incomplete Record in packet")
                 except UnicodeDecodeError as e:
@@ -492,5 +493,5 @@ DONE 4) Change Name
 DONE 5) Make sure output is in correct format   
 6) Make sure error handling is thorough
 DONE 7) Documentation
-8) Readme 
+DONE 8) Readme 
 """
