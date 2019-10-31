@@ -473,6 +473,7 @@ def main():
                 # Something went wrong with indexing; probably packet too short
                 except IndexError as e:
                     print("ERROR:   Incomplete Record in packet")
+
                 except UnicodeDecodeError as e:
                     print("ERROR:   Malformed Packet")
                 except Exception as e:
