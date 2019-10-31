@@ -90,7 +90,8 @@ def parseRecords(data, questionLength, headerInfo):
     cursor = questionLength
     print("Answers:")
     while cursor < len(data):
-        # marks separation between
+
+        # marks separation between the set the record is in
         if recordCount == recordCountThresholds[0]:
             print("Authoritative Servers:")
         if recordCount == recordCountThresholds[1]:
@@ -120,7 +121,7 @@ def parseRecords(data, questionLength, headerInfo):
                  + str(nameBytes[3])
             print("\tIP\t", IP, "\t" + auth, sep="")
         elif type == CNAME_TYPECODE:
-            name = parseName(data, cursor)
+            name = parseName(data, cursor - 2)
 
             print("\tCNAME\t", name, "\t" + auth, sep="")
         elif type == NS_TYPECODE:
@@ -189,19 +190,19 @@ def parseName(data, startPos):
     strRep = ""
 
     while cursor < endName:
-        wordSize = nameBytes[cursor]
+        wordSize = data[cursor]
 
         # in compression, if label is used to save space it is guaranteed to
         # start with 11; this checks if the first byte of the name is a label
         if wordSize >= 192:
-            offset = nameBytes[cursor] + nameBytes[cursor + 1] - 192
+            offset = data[cursor] + data[cursor + 1] - 192
             cursor += 2
             word = parseLabel(data, offset)
             strRep += word
 
         else:
             cursor += 1
-            wordBytes = nameBytes[cursor:cursor + wordSize]
+            wordBytes = data[cursor:cursor + wordSize]
             strRep += wordBytes.decode("ascii") + "."
             cursor += len(wordBytes)
     return strRep
