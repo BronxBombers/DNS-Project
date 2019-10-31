@@ -83,12 +83,22 @@ def parseRecords(data, questionLength, headerInfo):
     NSCOUNT = headerInfo["NameServerCount"]
     ARCOUNT = headerInfo["AdditionalRecordsCount"]
 
-    recordCounts = [ANCOUNT, NSCOUNT, ARCOUNT]
-    stage = 0
+
+    recordCountThresholds = [ANCOUNT, ANCOUNT+NSCOUNT, ANCOUNT+NSCOUNT+ARCOUNT]
     recordCount = 0
 
     cursor = questionLength
+    print("Answers:")
     while cursor < len(data):
+        # marks separation between
+        if recordCount == recordCountThresholds[0]:
+            print("Authoritative Servers:")
+        if recordCount == recordCountThresholds[1]:
+            print("Additional Records:")
+        if recordCount == recordCountThresholds[2]:
+            if cursor != len(data):
+                raise Exception("More records in reply than specified")
+
         name = data[cursor:cursor + 2]
         cursor += 2
         type = data[cursor:cursor + 2]
@@ -108,26 +118,25 @@ def parseRecords(data, questionLength, headerInfo):
                  + str(nameBytes[1]) + "." \
                  + str(nameBytes[2]) + "." \
                  + str(nameBytes[3])
-            print("\tIP\t", IP, "\t" + "PLACEHOLDER", sep="")
+            print("\tIP\t", IP, "\t" + auth, sep="")
         elif type == CNAME_TYPECODE:
             name = parseName(data, cursor)
 
-            print("\tCNAME\t", name, "\t" + "PLACEHOLDER", sep="")
+            print("\tCNAME\t", name, "\t" + auth, sep="")
         elif type == NS_TYPECODE:
             print("Found NS")
         elif type == MX_TYPECODE:
             preference = data[cursor] + data[cursor + 1]
             name = parseMailServer(data, cursor - 2)
-            print("MX\t", name, "\t", preference, "\t", "PLACEHOLDER")
+            print("MX\t", name, "\t", preference, "\t", auth)
         else:
             print("Found packet of unrecognized type")
 
         cursor += nameSize
-
-        # we've exhausted the records for the current section; next section
-        if recordCount == recordCounts[stage]:
-            stage += 1
         recordCount += 1
+
+    if cursor < len(data):
+        raise Exception("Not enough data for specified number of records")
 
 
 
@@ -271,7 +280,7 @@ def dump_packet(buffer, size):
         byteCount += 1
 
     # Filling out the last line with empty space and appending the ascii
-    if byteCount <= 8:
+    if byteCount % 16 <= 8:
         output += "\t"
     for i in range(0, 16 - (byteCount % 16)):
         output += "   "
@@ -372,13 +381,13 @@ def main():
         if len(data) > 2:
             respID = struct.unpack("!H", data[0:2])[0]
             if respID == DEFAULT_ID:
-                parseHeader(data)
                 print("Received packet of size: ", len(data), "\nContents:")
                 dump_packet(data, len(data))
                 try:
                     res = parseHeader(data)
                 except Exception as e:
                     print("ERROR    {}".format(e))
+
 
                 print("With DNS records:")
                 parseRecords(data, sent, res)
