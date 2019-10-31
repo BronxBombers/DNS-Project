@@ -1,6 +1,7 @@
 # Project2: DNS query/response
 # Authors: Zach Morgan, Arthur Heiles
 # Language: Python
+# Supports MX and NS packets for extra credit
 
 
 ### Approach
@@ -33,6 +34,18 @@
 
 ### Tests
     - Various forms of bad command line input
-    - The following forms of good input (produced expected results):
-
-
+    - The following command line args (produced expected results):
+        -ns @8.8.8.8:53 rit.edu
+        @8.8.8.8:53 mail.google.com
+        -mx @8.8.8.8:53 mail.google.com
+        @8.8.8.8:53 google.com
+        -mx @8.8.8.8:53 google.com
+        @8.8.8.8:53 rit.edu
+        @8.8.8.8:53 www.rit.edu
+        @8.8.8.8:53 arf
+        @8.8.8.8:53 .com
+        -mx @8.8.8.8:53 cs.rit.edu
+        @8.8.8.8:53 cs.rit.edu
+    - manufactured bad packets for (errored as expected):
+        altered data within packets
+        truncated packets

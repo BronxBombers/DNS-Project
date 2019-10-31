@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
+
+"""
+DNS Project Main Program
+Authors: Zach Morgan & Arthur Heiles
+"""
+
 import socket
 import sys
 import struct
 import time
 
 DEFAULT_PORT = 53
-DEFAULT_ID = 100
+DEFAULT_ID = 1337
 A_TYPECODE = b'\x00\x01'
 NS_TYPECODE = b'\x00\x02'
 CNAME_TYPECODE = b'\x00\x05'
 MX_TYPECODE = b'\x00\x0f'
-
-# TODO: Remove this, it's a bandaid covering up question not handling this case
-USE_MX = False
-USE_NS = True
 
 
 def usage():
@@ -21,6 +23,10 @@ def usage():
 
 
 def header():
+    """
+    Constructs a DNS request header
+    :return: complete DNS request header bytearray
+    """
     # init header
     header = bytearray()
 
@@ -37,7 +43,7 @@ def header():
     RCODE = '0000'
     header += bytearray(
         [int(qr + Opcode + AA + TC + RD, 2), int(RA + Z + RCODE, 2)])
-
+    #Questions count hardcoded to 1 because there's only ever one
     QDCOUNT = 1
     header += struct.pack("!H", QDCOUNT)
 
@@ -54,7 +60,13 @@ def header():
     return header
 
 
-def question(name):
+def question(name, reqType):
+    """
+    Constructs a DNS requests Question section with one question
+    :param name: domain name to query for
+    :param reqType: specifies question type can be standard, mail server, or name server
+    :return: question section byte array
+    """
     nArray = bytearray()
     nameArray = name.split(".")
     for name in nameArray:
@@ -62,10 +74,13 @@ def question(name):
         s = bytearray(name, 'utf-8')
         nArray += l + s
 
-    if USE_MX:
+    # if mx
+    if reqType == 1:
         nArray += bytearray.fromhex("00000f0001")
-    elif USE_NS:
+    # if ns
+    elif reqType == 2:
         nArray += bytearray.fromhex("0000020001")
+    # standard
     else:
         nArray += bytearray.fromhex("0000010001")
     return nArray
@@ -91,14 +106,15 @@ def parseRecords(data, questionLength, headerInfo):
     recordCount = 0
 
     cursor = questionLength
-    print("Answers:")
+    if ANCOUNT > 0:
+        print("ANSWER SECTION:")
     while cursor < len(data):
 
         # marks separation between the set the record is in
-        if recordCount == recordCountThresholds[0]:
-            print("Authoritative Servers:")
-        if recordCount == recordCountThresholds[1]:
-            print("Additional Records:")
+        if recordCount == recordCountThresholds[0] and NSCOUNT > 0:
+            print("AUTHORITY SECTION:")
+        if recordCount == recordCountThresholds[1] and ARCOUNT > 0:
+            print("ADDITIONAL SECTION:")
         if recordCount == recordCountThresholds[2]:
             if cursor != len(data):
                 raise Exception("More records in reply than specified")
@@ -136,13 +152,13 @@ def parseRecords(data, questionLength, headerInfo):
             name = parseMailServer(data, cursor - 2)
             print("MX\t", name, "\t", preference, "\t", auth)
         else:
-            print("\tFound packet of unrecognized type")
-
+            pass
         cursor += nameSize
         recordCount += 1
 
     if cursor < len(data):
         raise Exception("Not enough data for specified number of records")
+
 
 
 def parseLabel(data, startPos):
@@ -304,6 +320,12 @@ def dump_packet(buffer, size):
 
 
 def parseHeader(data):
+    """
+    Parses a DNS response packet's header
+    :param data: complete dns response packet
+    :return: dictionary containing relevant data from the header
+    OR throws an exception if there is an issue with one of the fields
+    """
     try:
         flagsB1 = struct.unpack("!B", data[2:3])[0]
     except Exception as e:
@@ -363,26 +385,47 @@ def parseHeader(data):
 
 
 def main():
-    if len(sys.argv) < 3:
+    c = 1
+    if not (len(sys.argv) == 4 or len(sys.argv) == 3):
         usage()
         return
 
-    serverport = sys.argv[1].strip("@").split(":")
-    if len(serverport) == 1:
-        server = serverport[0]
-        port = DEFAULT_PORT
-    elif len(serverport) == 2:
-        server = serverport[0]
-        port = int(serverport[1])
-    else:
+    # parse requested question type
+
+    reqType = 0
+    print(sys.argv)
+    if (len(sys.argv) == 4):
+        flag = sys.argv[1]
+        c += 1
+        if flag == '-mx':
+            reqType = 1
+        elif flag == '-ns':
+            reqType = 2
+        else:
+            usage()
+            return
+
+    # parse destination DNS server address
+    try:
+        serverport = sys.argv[c].strip("@").split(":")
+
+        c += 1
+        if len(serverport) == 1:
+            server = serverport[0]
+            port = DEFAULT_PORT
+        elif len(serverport) == 2:
+            server = serverport[0]
+            port = int(serverport[1])
+        else:
+            usage()
+            return
+    except Exception as e:
         usage()
         return
 
-    type = A_TYPECODE
+    domainName = sys.argv[c]
 
-    domainName = sys.argv[2]
-
-    requestPacket = header() + question(domainName)
+    requestPacket = header() + question(domainName, reqType)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_address = (server, port)
@@ -391,11 +434,11 @@ def main():
     dump_packet(requestPacket, len(requestPacket))
 
     sent = sock.sendto(requestPacket, server_address)
-    sock.settimeout(5)
     startTime = time.time()
+    # main loop that waits for and processes DNS responses
     while True:
         print("Waiting for DNS response...")
-
+        sock.settimeout(5)
         if (time.time() - startTime) > 300:
             print("NORESPONSE")
             return
@@ -405,9 +448,11 @@ def main():
         except Exception as e:
             print("NORESPONSE")
             return
-
+        # if the packet is from the server we requested from
+        # and it atleast contains an ID
         if server == server_address and len(data) > 2:
             respID = struct.unpack("!H", data[0:2])[0]
+            # verify the id of this packet matches the request's id
             if respID == DEFAULT_ID:
                 print("Received packet of size: ", len(data), "\nContents:")
                 dump_packet(data, len(data))
@@ -420,12 +465,15 @@ def main():
                     print("ERROR    {}".format(e))
                     break
 
+
                 print("With DNS records:")
 
                 try:
                     parseRecords(data, sent, res)
                 except IndexError as e:
                     print("ERROR:   Incomplete Record in packet")
+                except UnicodeDecodeError as e:
+                    print("ERROR:   Malformed Packet")
                 except Exception as e:
                     print("ERROR    {}".format(e))
                 break
@@ -434,15 +482,15 @@ def main():
 if __name__ == "__main__":
     main()
 
+
 """
-1) Parse args for mail server or name server request
+DONE 1) Parse args for mail server or name server request
     1b) Update parsing functions
 DONE 2) Add 5 second timeout for response
 DONE 3) Verify incoming response is from same server IP
-4) Change Name
-5) Make sure output is in correct format   
+DONE 4) Change Name
+DONE 5) Make sure output is in correct format   
 6) Make sure error handling is thorough
-7) Documentation
-8) Readme
-9) 
+DONE 7) Documentation
+8) Readme 
 """

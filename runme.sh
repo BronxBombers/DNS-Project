@@ -1,2 +1,2 @@
-chmod +x main.py
-vim +':wq ++ff=unix' main.py
+chmod +x 351dns.py
+vim +':wq ++ff=unix' 351dns.py
