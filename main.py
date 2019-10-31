@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import socket
 import sys
 import struct
@@ -11,7 +12,7 @@ MX_TYPECODE = b'\x00\x0f'
 
 # TODO: Remove this, it's a bandaid covering up question not handling this case
 USE_MX = False
-USE_NS = False
+USE_NS = True
 
 
 def usage():
@@ -125,13 +126,15 @@ def parseRecords(data, questionLength, headerInfo):
 
             print("\tCNAME\t", name, "\t" + auth, sep="")
         elif type == NS_TYPECODE:
-            print("Found NS")
+            name = parseName(data, cursor - 2);
+
+            print("\tNS\t", name, "\t" + auth, sep="")
         elif type == MX_TYPECODE:
             preference = data[cursor] + data[cursor + 1]
             name = parseMailServer(data, cursor - 2)
             print("MX\t", name, "\t", preference, "\t", auth)
         else:
-            print("Found packet of unrecognized type")
+            print("\tFound packet of unrecognized type")
 
         cursor += nameSize
         recordCount += 1
